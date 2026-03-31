@@ -1,0 +1,38 @@
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[project]
+name = "bluetag"
+version = "1.0.0"
+description = "BT370R 蓝签电子墨水标签 BLE 图像推送库"
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+license = {text = "MIT"}
+
+dependencies = [
+    "Pillow>=10.0.0",
+    "numpy>=1.24.0",
+    "python-lzo>=1.14",
+    "bleak>=0.21.0",
+    "tomli>=2.4.1",
+]
+
+[project.optional-dependencies]
+server = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.29.0",
+    "pydantic-settings>=2.2.0",
+    "python-dotenv>=1.0.0",
+    "python-multipart>=0.0.9",
+]
+all = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.29.0",
+    "pydantic-settings>=2.2.0",
+    "python-dotenv>=1.0.0",
+    "python-multipart>=0.0.9",
+]
+
+[project.scripts]
+bluetag = "bluetag.cli:main"

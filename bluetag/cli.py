@@ -278,6 +278,8 @@ def cmd_text(args):
         )
 
     if args.preview_only:
+        if profile.mirror:
+            preview = preview.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
         preview.show()
         print("仅预览模式，不推送")
         return

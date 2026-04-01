@@ -2,8 +2,6 @@
 
 BT370R 蓝签电子墨水标签 BLE 图像推送库。
 
-可以淘宝搜索`蓝签`
-
 支持两类屏幕:
 
 - `3.7inch` (`240×416`, 4 色, 设备名前缀 `EPD-`)
@@ -59,6 +57,15 @@ uv run examples/push_codex_usage.py
 
 # 仅生成 Codex usage 预览图
 uv run examples/push_codex_usage.py --preview-only
+
+# 把 Kimi Code usage 画成 /stats 风格并推到 2.13 寸
+uv run examples/push_kimi_usage.py
+
+# 把 Kimi Code usage 画成 /stats 风格并推到 3.7 寸
+uv run examples/push_kimi_usage_3.7.py
+
+# 仅生成 Kimi usage 预览图
+uv run examples/push_kimi_usage.py --preview-only
 
 # 自定义标题和颜色
 uv run bluetag text "会议室A 三楼" --title "指引" --title-color red
@@ -127,6 +134,34 @@ async def push_text():
 
 asyncio.run(push_image())
 ```
+
+## 项目结构
+
+```
+bbtag/
+├── bluetag/              # Python 核心库
+│   ├── image.py          #   图像量化、2bpp 编解码
+│   ├── text.py           #   文字渲染、自动排版
+│   ├── protocol.py       #   协议帧组装、LZO 压缩、分包
+│   ├── ble.py            #   BLE 扫描/连接/发送 (bleak)
+│   ├── screens.py        #   屏幕配置、设备名前缀、缓存文件规则
+│   ├── transfer.py       #   2.13 寸图层发送协议
+│   ├── server.py         #   REST API 服务 (FastAPI)
+│   └── cli.py            #   命令行工具
+├── docs/                 # 协议逆向分析参考
+├── examples/                     # 示例脚本
+│   ├── push_image.py             #   推送图片示例
+│   ├── push_text.py              #   推送文字示例
+│   ├── push_codex_usage.py       #   Codex usage -> 2.13 寸
+│   ├── push_codex_usage_3.7.py   #   Codex usage -> 3.7 寸
+│   ├── push_kimi_usage.py        #   Kimi usage -> 2.13 寸
+│   └── push_kimi_usage_3.7.py    #   Kimi usage -> 3.7 寸
+└── pyproject.toml
+```
+
+## 协议文档
+
+详见 [docs/PROTOCOL.md](docs/PROTOCOL.md)
 
 ## License
 

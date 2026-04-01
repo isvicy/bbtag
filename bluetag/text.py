@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PIL import Image, ImageDraw, ImageFont
 
 from bluetag.screens import get_screen_profile
@@ -21,28 +23,10 @@ COLOR_MAP = {
     "red": COLOR_RED,
 }
 
-# 字体搜索路径 (按优先级)
-_FONT_SEARCH = [
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-    "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-    "/System/Library/Fonts/STHeiti Medium.ttc",
-    "/System/Library/Fonts/PingFang.ttc",
-    "C:\\Windows\\Fonts\\msyh.ttc",
-    "C:\\Windows\\Fonts\\simhei.ttf",
-]
+FONTS_PATH = Path(__file__).parent / "fonts"
 
-_FONT_SEARCH_LIGHT = [
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-DemiLight.ttc",
-    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-    "/System/Library/Fonts/STHeiti Light.ttc",
-    "/System/Library/Fonts/PingFang.ttc",
-    "C:\\Windows\\Fonts\\msyh.ttc",
-]
+REGULAR_FONT = FONTS_PATH / "AlibabaPuHuiTi-Regular.ttf"
+BOLD_FONT = FONTS_PATH / "AlibabaPuHuiTi-Bold.ttf"
 
 
 def _find_font(
@@ -51,12 +35,9 @@ def _find_font(
     """查找可用字体，返回指定大小的 FreeTypeFont。"""
     if font_path:
         return ImageFont.truetype(font_path, size)
-    search = _FONT_SEARCH if bold else _FONT_SEARCH_LIGHT
-    for path in search:
-        try:
-            return ImageFont.truetype(path, size)
-        except (OSError, IOError):
-            continue
+    path = BOLD_FONT if bold else REGULAR_FONT
+    if path.exists():
+        return ImageFont.truetype(str(path), size)
     return ImageFont.load_default()
 
 

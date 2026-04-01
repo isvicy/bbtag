@@ -148,7 +148,6 @@ bbtag/
 │   ├── transfer.py       #   2.13 寸图层发送协议
 │   ├── server.py         #   REST API 服务 (FastAPI)
 │   └── cli.py            #   命令行工具
-├── docs/                 # 协议逆向分析参考
 ├── examples/                     # 示例脚本
 │   ├── push_image.py             #   推送图片示例
 │   ├── push_text.py              #   推送文字示例
@@ -158,10 +157,6 @@ bbtag/
 │   └── push_kimi_usage_3.7.py    #   Kimi usage -> 3.7 寸
 └── pyproject.toml
 ```
-
-## 协议文档
-
-详见 [docs/PROTOCOL.md](docs/PROTOCOL.md)
 
 ## License
 

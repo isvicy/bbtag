@@ -16,6 +16,7 @@ import asyncio
 import json
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -38,6 +39,7 @@ DEFAULT_SCREEN = "3.7inch"
 DEFAULT_SCAN_TIMEOUT = 12.0
 DEFAULT_SCAN_RETRIES = 3
 DEFAULT_CONNECT_RETRIES = 3
+DEFAULT_WATCH_INTERVAL = 60.0
 
 WIDTH = 416
 HEIGHT = 240
@@ -418,13 +420,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input-json", type=Path, help="Read usage from local JSON")
     parser.add_argument("--scan-timeout", type=float, default=DEFAULT_SCAN_TIMEOUT)
     parser.add_argument("--font", help="Custom monospace font path")
+    parser.add_argument(
+        "--watch", type=float, nargs="?", const=DEFAULT_WATCH_INTERVAL,
+        metavar="SECONDS",
+        help="Watch --input-json for changes and re-push (default: 60s)",
+    )
     return parser.parse_args()
 
 
-def main() -> int:
-    args = parse_args()
-
-    # Load data
+def _run_once(args) -> int:
     if args.input_json:
         payload = json.loads(args.input_json.read_text())
         source = f"file:{args.input_json}"
@@ -457,6 +461,40 @@ def main() -> int:
         print(f"❌ {exc}", file=sys.stderr)
         return 1
     return 0 if ok else 1
+
+
+def main() -> int:
+    args = parse_args()
+
+    if not args.watch:
+        return _run_once(args)
+
+    if not args.input_json:
+        print("❌ --watch requires --input-json", file=sys.stderr)
+        return 1
+
+    interval = args.watch
+    last_mtime = 0.0
+    print(f"👀 Watching {args.input_json} every {interval:.0f}s ...")
+
+    try:
+        while True:
+            try:
+                mtime = args.input_json.stat().st_mtime
+            except FileNotFoundError:
+                time.sleep(interval)
+                continue
+
+            if mtime != last_mtime:
+                last_mtime = mtime
+                ts = datetime.now().strftime("%H:%M:%S")
+                print(f"\n[{ts}] File changed, pushing...")
+                _run_once(args)
+
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        print("\n👋 Stopped.")
+        return 0
 
 
 if __name__ == "__main__":

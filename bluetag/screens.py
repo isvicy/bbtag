@@ -44,7 +44,7 @@ SCREEN_PROFILES: dict[str, ScreenProfile] = {
         device_prefix="EPD-",
         cache_file=".device.3.7inch",
         transport="frame",
-        default_interval_ms=50,
+        default_interval_ms=20,
         mirror=True,
     ),
     "2.13inch": ScreenProfile(

@@ -16,7 +16,6 @@ import asyncio
 import json
 import subprocess
 import sys
-import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -171,6 +170,19 @@ def load_font(size: int, *, font_path: str | None = None) -> ImageFont.FreeTypeF
     return ImageFont.load_default()
 
 
+COLOR_RED = (255, 0, 0)
+COLOR_YELLOW = (255, 255, 0)
+
+
+def _bar_fill_color(left_percent: float) -> tuple[int, int, int]:
+    """Pick bar fill color based on remaining usage."""
+    if left_percent <= 20:
+        return COLOR_RED
+    if left_percent <= 50:
+        return COLOR_YELLOW
+    return (0, 0, 0)  # black
+
+
 def draw_progress_bar(
     draw: ImageDraw.ImageDraw,
     *,
@@ -180,21 +192,20 @@ def draw_progress_bar(
     height: int,
     percent: float,
 ):
-    """Draw a bordered progress bar (codex style). percent is 'left'."""
+    """Draw a bordered progress bar. percent is 'left'."""
     draw.rectangle((x, y, x + width, y + height), outline="black", width=2)
     inner_x0 = x + 3
     inner_y0 = y + 3
     inner_x1 = x + width - 2
     inner_y1 = y + height - 2
     inner_width = max(0, inner_x1 - inner_x0)
-    # percent is "left", so filled = used = 100 - left
     used = max(0.0, min(100.0, 100.0 - percent))
     fill_width = round(inner_width * used / 100.0)
 
     if fill_width > 0:
         draw.rectangle(
             (inner_x0, inner_y0, inner_x0 + fill_width - 1, inner_y1),
-            fill="black",
+            fill=_bar_fill_color(percent),
         )
 
 
@@ -227,10 +238,9 @@ def render_usage_image(
     title_h = title_bbox[3] - title_bbox[1]
     tx = (width - title_w) // 2
     ty = top_pad
-    # Bold by drawing with 1px offsets
     for dx in (-1, 0, 1):
         for dy in (-1, 0, 1):
-            draw.text((tx + dx, ty + dy), title_text, fill="black", font=title_font)
+            draw.text((tx + dx, ty + dy), title_text, fill=COLOR_RED, font=title_font)
 
     rows_top = top_pad + title_h + title_gap
     row_count = max(1, len(rows))
@@ -245,11 +255,13 @@ def render_usage_image(
         label_h = label_bbox[3] - label_bbox[1]
         percent_w = percent_bbox[2] - percent_bbox[0]
 
+        status_color = _bar_fill_color(row.left_percent)
+
         draw.text((left_pad, row_top), row.label, fill="black", font=label_font)
         draw.text(
             (width - right_pad - percent_w, row_top - 2),
             percent_text,
-            fill="black",
+            fill=status_color,
             font=stat_font,
         )
 
@@ -269,7 +281,7 @@ def render_usage_image(
         draw.text(
             (width - right_pad - detail_w, bar_y + bar_h + 8),
             row.resets_text,
-            fill="black",
+            fill=status_color,
             font=detail_font,
         )
 
@@ -356,6 +368,19 @@ def prepare_landscape_image_for_37_screen(
     return native
 
 
+async def _send_packets(session, packets: list[bytes], interval_ms: int) -> bool:
+    try:
+        total = len(packets)
+        for index, packet in enumerate(packets, start=1):
+            await session.write(packet, response=False)
+            await asyncio.sleep(interval_ms / 1000.0)
+            _on_progress(index, total)
+        return True
+    except Exception as exc:
+        print(f"\n❌ 发送失败: {exc}")
+        return False
+
+
 async def push_image_to_37_screen(image: Image.Image, args) -> bool:
     from bluetag.ble import connect_session
 
@@ -389,17 +414,7 @@ async def push_image_to_37_screen(image: Image.Image, args) -> bool:
             f"连接 {target['name']} [{profile.name}], "
             f"帧数据 {len(frame)} bytes, {len(packets)} 包"
         )
-
-        total = len(packets)
-        for index, packet in enumerate(packets, start=1):
-            await session.write(packet, response=False)
-            await asyncio.sleep(interval_ms / 1000.0)
-            _on_progress(index, total)
-
-        return True
-    except Exception as exc:
-        print(f"\n❌ 发送失败: {exc}")
-        return False
+        return await _send_packets(session, packets, interval_ms)
     finally:
         await session.close()
 
@@ -463,6 +478,100 @@ def _run_once(args) -> int:
     return 0 if ok else 1
 
 
+async def _watch_loop(args) -> int:
+    from bluetag.ble import connect_session
+
+    profile = get_screen_profile(args.screen)
+    interval_ms = args.interval or profile.default_interval_ms
+
+    target = await _find_target(args, profile)
+    if not target:
+        print("❌ 未找到设备")
+        return 1
+
+    mac_suffix = parse_mac_suffix(target["name"])
+
+    session = await connect_session(
+        target.get("_ble_device") or target["address"],
+        timeout=20.0,
+        connect_retries=DEFAULT_CONNECT_RETRIES,
+    )
+    if not session:
+        print("❌ 连接设备失败")
+        return 1
+
+    print(f"🔗 已连接 {target['name']} [{profile.name}]，保持连接")
+
+    watch_interval = args.watch
+    last_mtime = 0.0
+    last_2bpp: bytes | None = None
+
+    print(f"👀 Watching {args.input_json} every {watch_interval:.0f}s ...")
+
+    try:
+        while True:
+            try:
+                mtime = args.input_json.stat().st_mtime
+            except FileNotFoundError:
+                await asyncio.sleep(watch_interval)
+                continue
+
+            if mtime == last_mtime:
+                await asyncio.sleep(watch_interval)
+                continue
+
+            last_mtime = mtime
+            ts = datetime.now().strftime("%H:%M:%S")
+
+            payload = json.loads(args.input_json.read_text())
+            rows = build_rows(payload)
+            image = render_usage_image(rows, font_path=args.font)
+            image.save(args.output)
+
+            native_img = prepare_landscape_image_for_37_screen(image, profile)
+            indices = quantize(native_img, flip=profile.mirror, size=profile.size)
+            data_2bpp = pack_2bpp(indices)
+
+            if data_2bpp == last_2bpp:
+                print(f"[{ts}] File changed, image identical — skipped")
+                await asyncio.sleep(watch_interval)
+                continue
+
+            last_2bpp = data_2bpp
+
+            frame = build_frame(mac_suffix, data_2bpp)
+            packets = packetize(frame)
+
+            print(f"\n[{ts}] File changed, pushing {len(packets)} packets...")
+            for row in rows:
+                print(f"  {row.label}: {int(round(row.left_percent))}% left, {row.resets_text}")
+
+            ok = await _send_packets(session, packets, interval_ms)
+            if not ok:
+                print("⚡ 连接断开，重连中...")
+                await session.close()
+                session = await connect_session(
+                    target.get("_ble_device") or target["address"],
+                    timeout=20.0,
+                    connect_retries=DEFAULT_CONNECT_RETRIES,
+                )
+                if not session:
+                    print("❌ 重连失败")
+                    return 1
+                print("🔗 重连成功，重试发送...")
+                ok = await _send_packets(session, packets, interval_ms)
+                if not ok:
+                    print("❌ 重试失败")
+                    return 1
+
+            await asyncio.sleep(watch_interval)
+    except KeyboardInterrupt:
+        print("\n👋 Stopped.")
+        return 0
+    finally:
+        await session.close()
+
+
 def main() -> int:
     args = parse_args()
 
@@ -473,28 +582,11 @@ def main() -> int:
         print("❌ --watch requires --input-json", file=sys.stderr)
         return 1
 
-    interval = args.watch
-    last_mtime = 0.0
-    print(f"👀 Watching {args.input_json} every {interval:.0f}s ...")
-
     try:
-        while True:
-            try:
-                mtime = args.input_json.stat().st_mtime
-            except FileNotFoundError:
-                time.sleep(interval)
-                continue
-
-            if mtime != last_mtime:
-                last_mtime = mtime
-                ts = datetime.now().strftime("%H:%M:%S")
-                print(f"\n[{ts}] File changed, pushing...")
-                _run_once(args)
-
-            time.sleep(interval)
-    except KeyboardInterrupt:
-        print("\n👋 Stopped.")
-        return 0
+        return asyncio.run(_watch_loop(args))
+    except BleDependencyError as exc:
+        print(f"❌ {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

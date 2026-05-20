@@ -23,6 +23,7 @@ class GlmQuotaParseError(RuntimeError):
 class ParsedUsageRow:
     label: str
     left_percent: float
+    bar_percent: float
     reset_at: str | None = None
     stat_text: str | None = None
 
@@ -113,10 +114,17 @@ def reset_timestamp_ms(item: Mapping[str, Any]) -> float | None:
     return None
 
 
+def _used_to_left_percent(used_percent: float) -> float:
+    """Quota API `percentage` is consumed (0–100), not remaining."""
+    return max(0.0, min(100.0, 100.0 - used_percent))
+
+
 def _row_from_token_limit(label: str, item: Mapping[str, Any]) -> ParsedUsageRow:
+    used = parse_percent(item.get("percentage"))
     return ParsedUsageRow(
         label=label,
-        left_percent=parse_percent(item.get("percentage")),
+        left_percent=_used_to_left_percent(used),
+        bar_percent=used,
         reset_at=reset_at_from_limit(item),
     )
 
@@ -128,10 +136,16 @@ def _row_from_mcp(
 ) -> ParsedUsageRow:
     total = _parse_int(item.get("usage"))
     remaining = _parse_int(item.get("remaining"))
-    left_percent = (remaining / total * 100.0) if total > 0 else 0.0
+    if total > 0:
+        left_percent = remaining / total * 100.0
+        bar_percent = (total - remaining) / total * 100.0
+    else:
+        left_percent = 0.0
+        bar_percent = 0.0
     return ParsedUsageRow(
         label=MCP_LABEL,
         left_percent=max(0.0, min(100.0, left_percent)),
+        bar_percent=max(0.0, min(100.0, bar_percent)),
         reset_at=reset_at_from_limit(item),
         stat_text=stat_text,
     )

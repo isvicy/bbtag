@@ -76,6 +76,7 @@ class GlmUsageError(RuntimeError):
 class UsageRow:
     label: str
     left_percent: float
+    bar_percent: float
     resets_text: str
     stat_text: str | None = None
 
@@ -269,6 +270,7 @@ def build_rows(payload: dict[str, Any], tzinfo) -> list[UsageRow]:
         UsageRow(
             label=row.label,
             left_percent=row.left_percent,
+            bar_percent=row.bar_percent,
             resets_text=format_reset_text(row.reset_at, tzinfo),
             stat_text=row.stat_text,
         )
@@ -373,7 +375,7 @@ def render_usage_image(
             y=bar_y,
             width=width - left_pad - right_pad - 1,
             height=bar_h,
-            percent=row.left_percent,
+            percent=row.bar_percent,
         )
 
         detail_bbox = draw.textbbox((0, 0), row.resets_text, font=detail_font)

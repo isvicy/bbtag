@@ -11,7 +11,7 @@
 示例:
     uv run examples/push_glm_usage.py --preview-only
     uv run examples/push_glm_usage.py --device EDP-F3F4F5F6
-    uv run examples/push_glm_usage.py --input-json examples/fixtures/glm_quota_sample.json --preview-only
+    uv run examples/push_glm_usage.py --input-json quota.json --preview-only
 """
 
 from __future__ import annotations

@@ -172,9 +172,6 @@ bbtag/
 │   ├── glm_quota_common.py       #   GLM quota/limit 解析（5h / 周 / MCP）
 │   ├── push_glm_usage.py         #   GLM Coding Plan usage -> 2.13 寸
 │   ├── push_glm_usage_3.7.py     #   GLM Coding Plan usage -> 3.7 寸
-│   ├── fixtures/
-│   │   ├── glm_quota_sample.json         # 5h + 周额度
-│   │   └── glm_quota_mcp_fallback.json # 5h + MCP（无周额度）
 │   ├── push_macos_app_usage_3.7.py # macOS app usage -> 3.7 寸
 │   └── push_crypto_binance_price.py # 币价 -> 2.13 寸
 └── pyproject.toml

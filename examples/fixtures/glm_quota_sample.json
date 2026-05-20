@@ -1,0 +1,31 @@
+{
+  "code": 200,
+  "msg": "操作成功",
+  "success": true,
+  "data": {
+    "limits": [
+      {
+        "type": "TIME_LIMIT",
+        "percentage": 7,
+        "usage": 1000,
+        "currentValue": 72,
+        "remaining": 928
+      },
+      {
+        "type": "TOKENS_LIMIT",
+        "unit": 3,
+        "number": 5,
+        "percentage": 44,
+        "nextResetTime": "2026-05-20T18:00:00+08:00"
+      },
+      {
+        "type": "TOKENS_LIMIT",
+        "unit": 6,
+        "number": 1,
+        "percentage": 53,
+        "nextResetTime": "2026-05-27T00:00:00+08:00"
+      }
+    ],
+    "level": "pro"
+  }
+}

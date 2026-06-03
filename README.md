@@ -52,6 +52,12 @@ uv run examples/push_kimi_usage.py
 # 把 Kimi Code usage 画成 /stats 风格并推到 3.7 寸
 uv run examples/push_kimi_usage_3.7.py
 
+# GLM Coding Plan usage 画成 /stats 风格并推到 2.13 寸
+uv run examples/push_glm_usage.py
+
+# GLM Coding Plan usage 画成 /stats 风格并推到 3.7 寸
+uv run examples/push_glm_usage_3.7.py
+
 # 把 macOS 当天 App 使用时长榜单推到 3.7 寸
 # 需要给终端 Full Disk Access 才能读取 Knowledge 数据库
 uv run examples/push_macos_app_usage_3.7.py --preview-only
@@ -90,6 +96,16 @@ uv run bluetag push photo.png -i 80
 | `--screen` | 屏幕尺寸: `3.7inch` / `2.13inch` |
 
 文字排版会根据 `--screen` 自动切换画布尺寸和字号策略。标题尽量大 (最多 2 行)，正文自动缩小直到全部放得下。
+
+**额外说明：GLM Coding Plan 用量推送**
+
+| 条件 | 第 1 行 | 第 2 行 |
+|------|---------|---------|
+| 必有 | `5h limit` | — |
+| 有周额度 | — | `weekly limit` / `1 week limit` |
+| 无周额度 | — | MCP monthly `usage/sum` |
+
+> **注：** 接口里若没有周额度返回，第二行会自动显示 MCP 每月次数（2.13 为 `usage left`，3.7 为 `usage/sum`），不会留空也不会报错。有周额度时只显示 5h + 周额度，不显示 MCP。
 
 ## Python API
 
@@ -153,6 +169,9 @@ bbtag/
 │   ├── push_codex_usage_3.7.py   #   Codex usage -> 3.7 寸
 │   ├── push_kimi_usage.py        #   Kimi usage -> 2.13 寸
 │   ├── push_kimi_usage_3.7.py    #   Kimi usage -> 3.7 寸
+│   ├── glm_quota_common.py       #   GLM quota/limit 解析（5h / 周 / MCP）
+│   ├── push_glm_usage.py         #   GLM Coding Plan usage -> 2.13 寸
+│   ├── push_glm_usage_3.7.py     #   GLM Coding Plan usage -> 3.7 寸
 │   ├── push_macos_app_usage_3.7.py # macOS app usage -> 3.7 寸
 │   └── push_crypto_binance_price.py # 币价 -> 2.13 寸
 └── pyproject.toml

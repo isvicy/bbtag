@@ -65,6 +65,15 @@ uv run examples/push_macos_app_usage_3.7.py --preview-only
 # 仅生成 Kimi usage 预览图
 uv run examples/push_kimi_usage.py --preview-only
 
+# StepFun 账户余额画成仪表盘并推到 2.13 寸（需 STEPFUN_API_KEY）
+uv run examples/push_stepfun_balance.py --preview-only
+
+# StepFun 账户余额推到 3.7 寸
+uv run examples/push_stepfun_balance_3.7.py --preview-only
+
+# 离线调试 StepFun 布局
+uv run examples/push_stepfun_balance.py --input-json examples/fixtures/stepfun_account.sample.json --preview-only
+
 # 自定义标题和颜色
 uv run bluetag text "会议室A 三楼" --title "指引" --title-color red
 
@@ -106,6 +115,17 @@ uv run bluetag push photo.png -i 80
 | 无周额度 | — | MCP monthly `usage/sum` |
 
 > **注：** 接口里若没有周额度返回，第二行会自动显示 MCP 每月次数（2.13 为 `usage left`，3.7 为 `usage/sum`），不会留空也不会报错。有周额度时只显示 5h + 周额度，不显示 MCP。
+
+**额外说明：StepFun 账户余额推送**
+
+| 屏幕 | 布局要点 |
+|------|----------|
+| 2.13 寸 | 进度条上方右对齐 `¥cash / ¥balance (X.X% left)`，底栏 `TYPE` / `CASH`，右下时间 |
+| 3.7 寸 | 同上，进度条与比例行更大，底栏双列展示 TYPE / CASH |
+
+现金占比：比例行 `¥(voucher-balance) / ¥voucher`，`X.X% left = balance / voucher × 100`；进度条黑色为已用（`used/voucher`），白色为剩余。
+
+凭证：`STEPFUN_API_KEY` 环境变量或 `--api-key`。API 为 `GET https://api.StepFun.com/v1/accounts`（可用 `STEPFUN_BASE_URL` 覆盖）。
 
 ## Python API
 
@@ -173,6 +193,10 @@ bbtag/
 │   ├── push_glm_usage.py         #   GLM Coding Plan usage -> 2.13 寸
 │   ├── push_glm_usage_3.7.py     #   GLM Coding Plan usage -> 3.7 寸
 │   ├── push_macos_app_usage_3.7.py # macOS app usage -> 3.7 寸
-│   └── push_crypto_binance_price.py # 币价 -> 2.13 寸
+│   ├── push_crypto_binance_price.py # 币价 -> 2.13 寸
+│   ├── stepfun_account_common.py   # StepFun /accounts 解析
+│   ├── push_stepfun_balance.py     # StepFun 余额 -> 2.13 寸
+│   ├── push_stepfun_balance_3.7.py # StepFun 余额 -> 3.7 寸
+│   └── fixtures/stepfun_account.sample.json
 └── pyproject.toml
 ```

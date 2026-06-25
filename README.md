@@ -12,22 +12,10 @@ CLI 会按 `--screen` 自动切换发送协议，并分别缓存到 `.device.3.7
 ## 快速开始
 
 ```bash
-# 系统依赖
-# macOS: brew install lzo
-# Linux: sudo apt install liblzo2-dev
-
 # 安装
 git clone <your-repo-url> && cd bbtag
-
-# macOS (Homebrew): python-lzo 需要显式指向 Homebrew 的 lzo 头文件
-LZO_DIR="$(brew --prefix lzo)" uv sync
-
-# Linux
 uv sync
 ```
-
-如果 macOS 上看到 `fatal error: 'lzo/lzo1.h' file not found`，说明 `python-lzo`
-没有找到 Homebrew 的 `lzo` 头文件；使用上面的 `LZO_DIR=... uv sync` 即可。
 
 需要蓝牙适配器 (USB dongle 或内置蓝牙)。
 
@@ -64,8 +52,27 @@ uv run examples/push_kimi_usage.py
 # 把 Kimi Code usage 画成 /stats 风格并推到 3.7 寸
 uv run examples/push_kimi_usage_3.7.py
 
+# GLM Coding Plan usage 画成 /stats 风格并推到 2.13 寸
+uv run examples/push_glm_usage.py
+
+# GLM Coding Plan usage 画成 /stats 风格并推到 3.7 寸
+uv run examples/push_glm_usage_3.7.py
+
+# 把 macOS 当天 App 使用时长榜单推到 3.7 寸
+# 需要给终端 Full Disk Access 才能读取 Knowledge 数据库
+uv run examples/push_macos_app_usage_3.7.py --preview-only
+
 # 仅生成 Kimi usage 预览图
 uv run examples/push_kimi_usage.py --preview-only
+
+# StepFun 账户余额画成仪表盘并推到 2.13 寸（需 STEPFUN_API_KEY）
+uv run examples/push_stepfun_balance.py --preview-only
+
+# StepFun 账户余额推到 3.7 寸
+uv run examples/push_stepfun_balance_3.7.py --preview-only
+
+# 离线调试 StepFun 布局
+uv run examples/push_stepfun_balance.py --input-json examples/fixtures/stepfun_account.sample.json --preview-only
 
 # 自定义标题和颜色
 uv run bluetag text "会议室A 三楼" --title "指引" --title-color red
@@ -98,6 +105,27 @@ uv run bluetag push photo.png -i 80
 | `--screen` | 屏幕尺寸: `3.7inch` / `2.13inch` |
 
 文字排版会根据 `--screen` 自动切换画布尺寸和字号策略。标题尽量大 (最多 2 行)，正文自动缩小直到全部放得下。
+
+**额外说明：GLM Coding Plan 用量推送**
+
+| 条件 | 第 1 行 | 第 2 行 |
+|------|---------|---------|
+| 必有 | `5h limit` | — |
+| 有周额度 | — | `weekly limit` / `1 week limit` |
+| 无周额度 | — | MCP monthly `usage/sum` |
+
+> **注：** 接口里若没有周额度返回，第二行会自动显示 MCP 每月次数（2.13 为 `usage left`，3.7 为 `usage/sum`），不会留空也不会报错。有周额度时只显示 5h + 周额度，不显示 MCP。
+
+**额外说明：StepFun 账户余额推送**
+
+| 屏幕 | 布局要点 |
+|------|----------|
+| 2.13 寸 | 进度条上方右对齐 `¥cash / ¥balance (X.X% left)`，底栏 `TYPE` / `CASH`，右下时间 |
+| 3.7 寸 | 同上，进度条与比例行更大，底栏双列展示 TYPE / CASH |
+
+现金占比：比例行 `¥(voucher-balance) / ¥voucher`，`X.X% left = balance / voucher × 100`；进度条黑色为已用（`used/voucher`），白色为剩余。
+
+凭证：`STEPFUN_API_KEY` 环境变量或 `--api-key`。API 为 `GET https://api.StepFun.com/v1/accounts`（可用 `STEPFUN_BASE_URL` 覆盖）。
 
 ## Python API
 
@@ -135,6 +163,10 @@ async def push_text():
 asyncio.run(push_image())
 ```
 
+## Web UI
+
+`examples/web_ui/` 提供一个本地 Web 界面，详见 [examples/web_ui/README.md](examples/web_ui/README.md)。
+
 ## 项目结构
 
 ```
@@ -149,11 +181,22 @@ bbtag/
 │   ├── server.py         #   REST API 服务 (FastAPI)
 │   └── cli.py            #   命令行工具
 ├── examples/                     # 示例脚本
+│   ├── web_ui/                   #   Web UI 静态资源 (index.html / app.js / styles.css)
+│   ├── run_web_ui.py             #   启动 server + 挂载 Web UI
 │   ├── push_image.py             #   推送图片示例
 │   ├── push_text.py              #   推送文字示例
 │   ├── push_codex_usage.py       #   Codex usage -> 2.13 寸
 │   ├── push_codex_usage_3.7.py   #   Codex usage -> 3.7 寸
 │   ├── push_kimi_usage.py        #   Kimi usage -> 2.13 寸
-│   └── push_kimi_usage_3.7.py    #   Kimi usage -> 3.7 寸
+│   ├── push_kimi_usage_3.7.py    #   Kimi usage -> 3.7 寸
+│   ├── glm_quota_common.py       #   GLM quota/limit 解析（5h / 周 / MCP）
+│   ├── push_glm_usage.py         #   GLM Coding Plan usage -> 2.13 寸
+│   ├── push_glm_usage_3.7.py     #   GLM Coding Plan usage -> 3.7 寸
+│   ├── push_macos_app_usage_3.7.py # macOS app usage -> 3.7 寸
+│   ├── push_crypto_binance_price.py # 币价 -> 2.13 寸
+│   ├── stepfun_account_common.py   # StepFun /accounts 解析
+│   ├── push_stepfun_balance.py     # StepFun 余额 -> 2.13 寸
+│   ├── push_stepfun_balance_3.7.py # StepFun 余额 -> 3.7 寸
+│   └── fixtures/stepfun_account.sample.json
 └── pyproject.toml
 ```

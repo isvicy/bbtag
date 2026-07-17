@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Render Claude Code usage on a 3.7-inch e-ink tag (landscape 416×240).
 
-Shows two rows: Current session (5h) and Weekly limits (7d all models).
+Shows one row per rate-limit bucket: session (5h), weekly (all models),
+and any model-scoped weekly limits (e.g. Fable).
 
 Usage:
     uv run examples/push_claude_usage.py
@@ -51,12 +52,22 @@ MONO_FONT_SEARCH = [
     "C:\\Windows\\Fonts\\consola.ttf",
 ]
 
+CJK_FONT_SEARCH = [
+    str(Path.home() / "Library" / "Fonts" / "fangzhengjuzhenxinfang.ttf"),
+    "/System/Library/Fonts/STHeiti Medium.ttc",
+    "/System/Library/Fonts/PingFang.ttc",
+    "/System/Library/Fonts/Hiragino Sans GB.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+]
+
 
 @dataclass
 class UsageRow:
     label: str
     left_percent: float
     resets_text: str
+    kind: str = ""
+    resets_at: str | None = None
 
 
 # ── OAuth Token ───────────────────────────────────────────────────────────────
@@ -140,23 +151,69 @@ def _fmt_resets(iso: str | None) -> str:
         return "resets unknown"
 
 
-def build_rows(payload: dict[str, Any]) -> list[UsageRow]:
-    fh = payload.get("five_hour") or {}
-    sd = payload.get("seven_day") or {}
+_LIMIT_ORDER = {"session": 0, "weekly_all": 1, "weekly_scoped": 2}
+
+
+def _scoped_model_name(limit: dict[str, Any]) -> str | None:
+    model = (limit.get("scope") or {}).get("model") or {}
+    return model.get("display_name") or None
+
+
+def _label_for_limit(limit: dict[str, Any]) -> str:
+    kind = limit.get("kind")
+    if kind == "session":
+        return "5h"
+    if kind == "weekly_all":
+        return "weekly"
+    if kind == "weekly_scoped":
+        return _scoped_model_name(limit) or "scoped"
+    return kind or "limit"
+
+
+def _rows_from_limits(limits: list[dict[str, Any]]) -> list[UsageRow]:
+    def sort_key(limit: dict[str, Any]) -> tuple[int, str]:
+        return _LIMIT_ORDER.get(limit.get("kind"), 9), _scoped_model_name(limit) or ""
 
     rows: list[UsageRow] = []
-    for label, section in [("5h limit", fh), ("weekly limit", sd)]:
-        util = section.get("utilization", 0) or 0
+    for limit in sorted(limits, key=sort_key):
+        util = limit.get("percent", 0) or 0
         left = max(0.0, min(100.0, 100.0 - util))
+        resets_at = limit.get("resets_at")
         rows.append(UsageRow(
-            label=label,
+            label=_label_for_limit(limit),
             left_percent=left,
-            resets_text=_fmt_resets(section.get("resets_at")),
+            resets_text=_fmt_resets(resets_at),
+            kind=limit.get("kind") or "",
+            resets_at=resets_at,
         ))
     return rows
 
 
-# ── Rendering (same style as push_codex_usage_3.7.py) ────────────────────────
+def _rows_from_legacy(payload: dict[str, Any]) -> list[UsageRow]:
+    rows: list[UsageRow] = []
+    for label, kind, key in [("5h", "session", "five_hour"), ("weekly", "weekly_all", "seven_day")]:
+        section = payload.get(key) or {}
+        util = section.get("utilization", 0) or 0
+        left = max(0.0, min(100.0, 100.0 - util))
+        resets_at = section.get("resets_at")
+        rows.append(UsageRow(
+            label=label,
+            left_percent=left,
+            resets_text=_fmt_resets(resets_at),
+            kind=kind,
+            resets_at=resets_at,
+        ))
+    return rows
+
+
+def build_rows(payload: dict[str, Any]) -> list[UsageRow]:
+    limits = payload.get("limits")
+    if isinstance(limits, list) and limits:
+        return _rows_from_limits(limits)
+    return _rows_from_legacy(payload)
+
+
+# ── Rendering (three columns: label + reset hint + 剩余 NN% per row) ──────────
 
 
 def load_font(size: int, *, font_path: str | None = None) -> ImageFont.FreeTypeFont:
@@ -168,6 +225,18 @@ def load_font(size: int, *, font_path: str | None = None) -> ImageFont.FreeTypeF
         except OSError:
             continue
     return ImageFont.load_default()
+
+
+def load_cjk_font(size: int, *, font_path: str | None = None) -> ImageFont.FreeTypeFont:
+    candidates = ([font_path] if font_path else []) + CJK_FONT_SEARCH
+    for path in candidates:
+        if not path:
+            continue
+        try:
+            return ImageFont.truetype(path, size)
+        except OSError:
+            continue
+    return load_font(size)
 
 
 COLOR_RED = (255, 0, 0)
@@ -183,30 +252,26 @@ def _bar_fill_color(left_percent: float) -> tuple[int, int, int]:
     return (0, 0, 0)  # black
 
 
-def draw_progress_bar(
-    draw: ImageDraw.ImageDraw,
-    *,
-    x: int,
-    y: int,
-    width: int,
-    height: int,
-    percent: float,
-):
-    """Draw a bordered progress bar. percent is 'left'."""
-    draw.rectangle((x, y, x + width, y + height), outline="black", width=2)
-    inner_x0 = x + 3
-    inner_y0 = y + 3
-    inner_x1 = x + width - 2
-    inner_y1 = y + height - 2
-    inner_width = max(0, inner_x1 - inner_x0)
-    used = max(0.0, min(100.0, 100.0 - percent))
-    fill_width = round(inner_width * used / 100.0)
+_CN_WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
 
-    if fill_width > 0:
-        draw.rectangle(
-            (inner_x0, inner_y0, inner_x0 + fill_width - 1, inner_y1),
-            fill=_bar_fill_color(percent),
-        )
+
+def _reset_cn(iso: str | None) -> str:
+    """Chinese reset hint: '3h后' within a day, else '周三 21:00'."""
+    if not iso:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso).astimezone()
+        secs = (dt - datetime.now(timezone.utc).astimezone()).total_seconds()
+    except (ValueError, TypeError):
+        return ""
+    if secs <= 0:
+        return "已重置"
+    if secs < 24 * 3600:
+        h = int(secs) // 3600
+        if h >= 1:
+            return f"{h}h后"
+        return f"{max(1, int(secs) // 60)}m后"
+    return f"{_CN_WEEKDAYS[dt.weekday()]} {dt.strftime('%H:%M')}"
 
 
 def render_usage_image(
@@ -216,74 +281,66 @@ def render_usage_image(
     height: int = HEIGHT,
     font_path: str | None = None,
 ) -> Image.Image:
-    """Render usage image for 3.7 inch landscape layout (416x240)."""
+    """Render usage on the 3.7 inch landscape tag (416x240), text-forward.
+
+    Three columns per limit — short label (left), Chinese reset hint (middle),
+    "剩余 NN%" (right). The reset column fills the former mid-row whitespace,
+    so no separate footer is needed. Chinese uses a CJK font, numbers stay mono.
+    """
     img = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(img)
 
-    title_font = load_font(24, font_path=font_path)
-    label_font = load_font(20, font_path=font_path)
-    stat_font = load_font(22, font_path=font_path)
-    detail_font = load_font(14, font_path=font_path)
+    row_count = max(1, len(rows))
+    left_pad = 22
+    right_pad = 22
+    top_pad = 14
+    bottom_pad = 16
 
-    left_pad = 20
-    right_pad = 20
-    top_pad = 15
-    bottom_pad = 15
-    title_gap = 28
-    gap = 25
+    title_font = load_font(26, font_path=font_path)
 
     title_text = "CC Usage"
-    title_bbox = draw.textbbox((0, 0), title_text, font=title_font)
-    title_w = title_bbox[2] - title_bbox[0]
-    title_h = title_bbox[3] - title_bbox[1]
+    tb = draw.textbbox((0, 0), title_text, font=title_font)
+    title_w = tb[2] - tb[0]
+    title_h = tb[3] - tb[1]
     tx = (width - title_w) // 2
-    ty = top_pad
     for dx in (-1, 0, 1):
         for dy in (-1, 0, 1):
-            draw.text((tx + dx, ty + dy), title_text, fill=COLOR_RED, font=title_font)
+            draw.text((tx + dx, top_pad + dy), title_text, fill=COLOR_RED, font=title_font)
 
-    rows_top = top_pad + title_h + title_gap
-    row_count = max(1, len(rows))
-    row_height = (height - rows_top - bottom_pad - gap * (row_count - 1)) // row_count
+    band_top = top_pad + title_h + 20
+    band_bottom = height - bottom_pad
+    row_h = max(1, (band_bottom - band_top) // row_count)
+
+    label_font = load_font(min(28, max(18, row_h - 20)), font_path=font_path)
+    pct_size = min(34, max(22, row_h - 16))
+    pct_font = load_font(pct_size, font_path=font_path)
+    prefix_font = load_cjk_font(max(18, pct_size - 8))
+    reset_font = load_cjk_font(max(15, pct_size - 14))
+
+    x_right = width - right_pad
+    prefix = "剩余"
+    prefix_gap = 8
+    reset_gap = 18
+    prefix_w = draw.textlength(prefix, font=prefix_font)
 
     for idx, row in enumerate(rows):
-        row_top = rows_top + idx * (row_height + gap)
-        percent_text = f"{int(round(row.left_percent))}% left"
+        mid = band_top + idx * row_h + row_h // 2
+        color = _bar_fill_color(row.left_percent)
 
-        label_bbox = draw.textbbox((0, 0), row.label, font=label_font)
-        percent_bbox = draw.textbbox((0, 0), percent_text, font=stat_font)
-        label_h = label_bbox[3] - label_bbox[1]
-        percent_w = percent_bbox[2] - percent_bbox[0]
+        label = row.label if len(row.label) <= 8 else row.label[:7] + "…"
+        draw.text((left_pad, mid), label, fill="black", font=label_font, anchor="lm")
 
-        status_color = _bar_fill_color(row.left_percent)
+        pct_text = f"{int(round(row.left_percent))}%"
+        num_w = draw.textlength(pct_text, font=pct_font)
+        draw.text((x_right, mid), pct_text, fill=color, font=pct_font, anchor="rm")
 
-        draw.text((left_pad, row_top), row.label, fill="black", font=label_font)
-        draw.text(
-            (width - right_pad - percent_w, row_top - 2),
-            percent_text,
-            fill=status_color,
-            font=stat_font,
-        )
+        prefix_right = x_right - num_w - prefix_gap
+        draw.text((prefix_right, mid), prefix, fill="black", font=prefix_font, anchor="rm")
 
-        bar_y = row_top + label_h + 8
-        bar_h = 20
-        draw_progress_bar(
-            draw,
-            x=left_pad,
-            y=bar_y,
-            width=width - left_pad - right_pad - 1,
-            height=bar_h,
-            percent=row.left_percent,
-        )
-
-        detail_bbox = draw.textbbox((0, 0), row.resets_text, font=detail_font)
-        detail_w = detail_bbox[2] - detail_bbox[0]
-        draw.text(
-            (width - right_pad - detail_w, bar_y + bar_h + 8),
-            row.resets_text,
-            fill=status_color,
-            font=detail_font,
-        )
+        reset_text = _reset_cn(row.resets_at)
+        if reset_text:
+            reset_right = prefix_right - prefix_w - reset_gap
+            draw.text((reset_right, mid), reset_text, fill="black", font=reset_font, anchor="rm")
 
     return img
 
